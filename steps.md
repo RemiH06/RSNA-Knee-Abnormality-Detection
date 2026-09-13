@@ -46,6 +46,19 @@ Todo lo de esta sección quedó verificado directo con la API de Kaggle (`kaggle
 - [ ] **Fase 5 — Ajustar a restricciones de code competition**: notebook de inferencia debe correr en ≤9 horas sin internet, usando solo el estudio de imagen (sin `Report`) como entrada, con pesos/modelos preentrenados adjuntos como Kaggle Dataset.
 - [ ] **Fase 6 — Iteración y envío final**: ensamble, ajuste de umbrales/calibración, antes del 2026-10-22 23:59.
 
+## Cambio de plan: entrenar en la PC con RTX 3060
+
+Se decidió mover el entrenamiento de imagen a una PC de escritorio con GPU (RTX 3060) en vez de depender solo de Kaggle Notebooks. Esta laptop no tiene GPU NVIDIA, así que sirve para EDA, prototipos chicos y preprocesamiento; el entrenamiento real corre en la PC de escritorio.
+
+El proyecto no estaba en git (por eso "clonar" no aplicaba de inicio) y la carpeta, aunque tiene "OneDrive" en la ruta, no sincroniza de verdad (nombre simbólico). Ya se inicializó un repo git local aquí con `.gitignore` (excluye `.env`, `data/`, `*.dcm`, venvs) y `requirements.txt` (dependencias sin GPU: kaggle, pandas, pydicom, pillow, numpy). `torch` se deja fuera del requirements.txt a propósito porque su instalación depende del driver de NVIDIA de cada máquina.
+
+Para completar la migración falta:
+1. Crear un repo vacío en GitHub (privado, recomendado ya que sube reportes/labels de la competencia aunque `data/` esté excluido) y pasar la URL para hacer `git remote add origin <url> && git push -u origin master`.
+2. En la PC con la 3060: instalar Git y Python (evitar el alias de Microsoft Store en Windows, mismo problema que en esta laptop), clonar el repo, crear venv, `pip install -r requirements.txt`.
+3. Instalar PyTorch con soporte CUDA acorde al driver de esa PC (`nvidia-smi` para ver la versión soportada, luego el comando exacto de pytorch.org/get-started).
+4. Recrear el archivo `.env` con el mismo `KAGGLE_TOKEN` manualmente en esa PC (no viaja por git, está en `.gitignore` a propósito).
+5. Verificar acceso: exportar `KAGGLE_API_TOKEN` y correr `kaggle competitions files -c rsna-knee-abnormality-detection`; verificar GPU con `python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"`.
+
 ## Siguiente paso inmediato
 
-Fase 1: EDA real. Empezar por el texto (ya está todo local) y por la exploración de imágenes de los 58 casos con etiqueta gold.
+Fase 1: EDA real. Empezar por el texto (ya está todo local) y por la exploración de imágenes de los 58 casos con etiqueta gold. En paralelo, terminar la migración de arriba para tener la 3060 lista para cuando empiece Fase 3 (entrenamiento de imagen).
