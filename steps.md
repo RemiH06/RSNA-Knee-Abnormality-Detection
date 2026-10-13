@@ -1,3 +1,5 @@
+ok, veamos, como queda poco tiempo y quiero hacer una buena entrega pero no puedo estar siempre en casa, usaremos la skill de Bakery para trabajar en esto.
+
 # RSNA Knee Abnormality Detection — plan de trabajo
 
 Todo lo de esta sección quedó verificado directo con la API de Kaggle (`kaggle competitions pages --content`) el 12 de septiembre de 2026, ya con la cuenta unida a la competencia. Reemplaza cualquier supuesto anterior sacado de fuentes de terceros.
@@ -24,11 +26,23 @@ Todo lo de esta sección quedó verificado directo con la API de Kaggle (`kaggle
 
 ## Tamaño del dataset y su implicación práctica
 
-`train_series.csv` tiene 24,371 series; con mediana de 30 cortes por serie y ~1.76 MB por archivo `.dcm` (tamaño observado, consistente entre archivos), el set de entrenamiento completo son **~700,000+ archivos, del orden de 1 TB**. Esto no es viable de descargar ni entrenar en esta máquina local (sin GPU NVIDIA). Consecuencia para el plan:
+Medido el 2026-10-13 leyendo el directorio central del zip oficial (`archive.zip`, versión del 2026-09-19) por HTTP Range, sin descargarlo:
 
-- El desarrollo de imagen (EDA visual, entrenamiento, validación) debe hacerse **dentro de un Kaggle Notebook**, donde el dataset ya está montado y hay GPU (T4/P100) gratis.
-- Localmente solo tiene sentido descargar un subconjunto chico: por ejemplo las imágenes de los 58 estudios con etiqueta gold, para prototipos rápidos antes de subir el notebook completo a Kaggle.
-- El trabajo sobre texto (reportes) sí es 100% viable local, porque `train.csv` (5.4 MB) ya está descargado completo.
+- `archive.zip`: **265 GB comprimido**. `train_series/`: **819,078 cortes, 569 GB descomprimido** (264 GB comprimido). Las 24,371 series tienen mediana de 30 cortes (p90 39, p99 160, máx 320).
+- El servidor acepta `Range`, así que se puede leer cualquier miembro del zip sin bajar el resto. Listar archivo por archivo con la API de Kaggle da 429 (rate limit) a los ~100 requests: no sirve para bajar 819k archivos.
+- Muestra aleatoria de 40 cortes: todos `Explicit VR Little Endian` (sin JPEG/J2K), `pydicom` los decodifica sin plugins. Resolución nativa variable, de 192 a 1024 px (mediana ~512, muchos de 384).
+- Los 58 estudios gold: 336 series, 10,528 cortes, 3.4 GB comprimido.
+
+Pixilate tiene **78.6 GB libres** (no 94): no cabe ni el zip ni el dataset descomprimido. Sí cabe redimensionado a uint8 (normalizado por serie con percentiles):
+
+| Lado | Todos los cortes, uint8 sin comprimir |
+|---|---|
+| 224 px | 41 GB |
+| 256 px | 54 GB |
+| 320 px | 84 GB (no cabe sin compresión) |
+| 384 px | 121 GB (no cabe) |
+
+Plan de datos: un script en Pixilate lee el zip remoto por rangos serie por serie, decodifica en memoria, redimensiona a 256 px y guarda un `.npy`/`.npz` comprimido por serie. El crudo nunca toca disco, es reanudable (salta series ya hechas) y en paralelo con los 8 núcleos. Bajada medida en Pixilate: ~52 MB/s, unas 1.5 h para los 264 GB. El mismo preprocesamiento se reusa tal cual en el notebook de inferencia de Kaggle.
 
 ## Entorno local
 
@@ -62,3 +76,9 @@ Para completar la migración falta:
 ## Siguiente paso inmediato
 
 Fase 1: EDA real. Empezar por el texto (ya está todo local) y por la exploración de imágenes de los 58 casos con etiqueta gold. En paralelo, terminar la migración de arriba para tener la 3060 lista para cuando empiece Fase 3 (entrenamiento de imagen).
+
+Traspaso al 2026-10-13:
+- Pendiente del usuario, en casa: limpiar espacio en Pixilate y conectarle Big Chungus (HDD externo de 1 TB, casi lleno; confirmar cuánto espacio libre queda antes de usarlo como destino). Al retomar, volver a medir el espacio libre de ambos (`Get-PSDrive`) antes de decidir la resolución, porque 320 px podría caber.
+- Pendiente de decidir: hacer privado el repo (las reglas solo permiten compartir código públicamente en Kaggle).
+- Listo para usar: `scripts/zip_index.py` (lee el índice del zip remoto en ~40 s y escribe un CSV con offset y tamaño de cada miembro) y `scripts/zip_sample.py` (baja y decodifica miembros sueltos por rango). Base del preprocesamiento.
+- Siguiente: con el visto bueno del usuario, crear el venv en Pixilate (torch CUDA, pydicom, pandas, kaggle), escribir el preprocesamiento por rangos a `.npz` por serie y lanzarlo con `job.ps1`. Empezar por los 58 estudios gold (3.4 GB) para validar el pipeline y hacer el EDA de imagen.
