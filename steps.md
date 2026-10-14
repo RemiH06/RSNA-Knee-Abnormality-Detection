@@ -77,7 +77,19 @@ Para completar la migración falta:
 
 Fase 1: EDA real. Empezar por el texto (ya está todo local) y por la exploración de imágenes de los 58 casos con etiqueta gold. En paralelo, terminar la migración de arriba para tener la 3060 lista para cuando empiece Fase 3 (entrenamiento de imagen).
 
+## Qué hace la comunidad (revisado 2026-10-13)
+
+Leaderboard público: top 0.966; los notebooks públicos llegan a ~0.956 mezclando modelos ajenos. Notebooks leídos: `pilkwang/rsna-knee-baseline-v1`, `dreaddevelopment/knee-mri-training-the-twelve-finding-model` (Raptor), `prvsiyan/rsna-knee-read-the-report-then-the-knee`, `goodpjw2008/...-mil-lb-0-954`, `mattiaangeli/bend-the-knee-to-dinov3-ensembled`, `romantamrazov/rsna-knee-dinosaur-the-last`.
+
+- **Etiquetas**: nadie hace clustering. Todos convierten los 4,407 reportes en etiquetas suaves (0–1) con un LLM (o reglas multilenguaje) y entrenan la imagen contra eso, como maestro-texto → alumno-imagen. Los 58 gold se usan solo como validación. Datasets públicos: `pilkwang/rsna-knee-llm-labels`, `stevenleehans/rsna-knee-llm-report-labels`.
+- **Datos ya preprocesados públicos**: `dreaddevelopment/knee-raptor-corpus` (+ `-ext`): los 4,407 estudios como `uint8` de 44×336×336, ~22 GB. Evita bajar y procesar los 264 GB.
+- **Preprocesamiento que importa**: ordenar cortes por geometría (`ImagePositionPatient`·normal, no por nombre de archivo), recorte a campo de visión físico fijo (~140 mm), normalizar lateralidad (rodilla derecha/izquierda; `Laterality` falta en ~50 % de estudios), slots por plano/secuencia (sagital FS, sagital no-FS, coronal FS, coronal no-FS, axial).
+- **Modelo**: 2.5D (tripletas de cortes adyacentes como 3 canales) + encoder 2D (CoAtNet-384, ConvNeXt, DINOv2/v3 ViT-S) + MIL con atención separada por hallazgo. Encoder afinado, no congelado. Promedio de pesos de los mejores epochs; TTA con espejo.
+- **Combinación**: promedio de rangos (la métrica es AUC, solo importa el orden), pesos por hallazgo.
+- **Inferencia**: lector tolerante a DICOMs rotos; un error en 1 de ~1,300 estudios tumbó envíos ajenos.
+
 Traspaso al 2026-10-13:
+- Actualización: Pixilate ya tiene ~560 GB libres en `C:` (se borró Linux). Big Chungus ya no hace falta y cualquier resolución de la tabla cabe.
 - Pendiente del usuario, en casa: limpiar espacio en Pixilate y conectarle Big Chungus (HDD externo de 1 TB, casi lleno; confirmar cuánto espacio libre queda antes de usarlo como destino). Al retomar, volver a medir el espacio libre de ambos (`Get-PSDrive`) antes de decidir la resolución, porque 320 px podría caber.
 - Pendiente de decidir: hacer privado el repo (las reglas solo permiten compartir código públicamente en Kaggle).
 - Listo para usar: `scripts/zip_index.py` (lee el índice del zip remoto en ~40 s y escribe un CSV con offset y tamaño de cada miembro) y `scripts/zip_sample.py` (baja y decodifica miembros sueltos por rango). Base del preprocesamiento.
