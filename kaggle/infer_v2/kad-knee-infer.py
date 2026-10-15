@@ -318,6 +318,7 @@ def main():
     reader = _make_reader()
     N = len(test_ids); A = len(ARMS)
     arm_probs = [np.full((N, len(LAB)), 0.5, np.float32) for _ in range(A)]
+    failed = np.zeros(N, bool)
 
     # SEQUENTIAL ARMS (the OOM fix): only ONE model is resident at a time, so peak system RAM ==
     # one model == the single-arm champion's footprint (which graded fine at 0.879). Holding both
@@ -335,6 +336,7 @@ def main():
                 arm_probs[a][i] = infer_probs(model, xw, dev)
                 del vol, mask, xw
             except Exception as e:
+                failed[i] = True
                 print(f"  [arm {a}] study {i} {sid[:16]} FALLBACK ({type(e).__name__}: {e})", flush=True)
             if (i + 1) % 100 == 0 or i + 1 == N:
                 print(f"  [arm {a}] {i+1}/{N} | {time.time()-t0:.0f}s", flush=True)
@@ -343,6 +345,17 @@ def main():
         if str(dev).startswith("cuda"):
             torch.cuda.empty_cache()
         print(f"[arm {a}] done + freed | {time.time()-t0:.0f}s", flush=True)
+
+    # Modo etapa de un blend: KAD_RAW_OUT guarda las probabilidades crudas (un estudio fallido queda vacío,
+    # para que el blend lo excluya) en vez de submission.csv.
+    raw_out = os.environ.get("KAD_RAW_OUT")
+    if raw_out:
+        raw = pd.DataFrame(arm_probs[0], columns=LAB)
+        raw.loc[failed, LAB] = np.nan
+        raw.insert(0, "StudyInstanceUID", test_ids)
+        raw.to_csv(raw_out, index=False)
+        print("wrote", raw_out, "| failed", int(failed.sum()), f"| DONE {time.time()-t0:.0f}s", flush=True)
+        return
 
     # WEIGHTED rank-mean blend across the test set, per finding (the offline recipe).
     # Weights come from ARMS[*]["w"] and are normalised here, so dropping/adding an arm can

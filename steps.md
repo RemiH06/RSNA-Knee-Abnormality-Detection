@@ -116,8 +116,13 @@ Fase: inferencia y primer envío. Contexto de la tarea de clase en la memoria `r
 **Hecho 2026-10-15 (mañana):** pasos 1 a 3.
 - Pesos en el dataset privado `hctorheredia/kad-knee-weights` (subido con `scripts/upload_weights.py` vía `run_with_token.ps1`, que ahora reenvía argumentos).
 - Notebook `kaggle/infer_v2/` → kernel privado `hctorheredia/kad-knee-infer-v2` (v1): el de Raptor con nuestros pesos, `kaggle kernels push -p kaggle/infer_v2`. Con los 3 estudios de ejemplo: 39 s, sin fallos, carga estricta de pesos OK.
-- Primer envío: submission 57232135 (`kaggle competitions submit -c rsna-knee-abnormality-detection -k hctorheredia/kad-knee-infer-v2 -v 1 -f submission.csv`). Score público: PENDIENTE.
-- Siguiente: pasos 4 y 5.
+- Primer envío: submission 57232135 (`kaggle competitions submit -c rsna-knee-abnormality-detection -k hctorheredia/kad-knee-infer-v2 -v 1 -f submission.csv`). Score público: **0.919** (el público con la misma receta saca 0.914).
+- Paso 4 (2026-10-15 tarde): `kaggle/blend/` = fork de `heliosli/this-one-is-old-version-0-957-new-one-you-can-use` (R7 + Raptor 384/224, LB 0.957), generado con `python kaggle/blend/build.py <ipynb público> <peso>`. Nuestra etapa corre en segundo plano en la GPU 1 (nice 15) durante las etapas Raptor; si no terminó al empezar la etapa 2 se mata y el envío queda igual al público (`KAD_SKIPPED`). Ojo: el `heliosli/this-is-new-version-0-9576...` ya no corre tal cual, su dataset `rsna-knee-r6-frozen-fe055406` pasó a v2 (bundle R7 8c7b666e) y falla su assert de BUNDLE_ID.
+  - Kernel `hctorheredia/kad-knee-blend` v2 = peso 0.15 → submission 57240482. Score: PENDIENTE.
+  - v3 = peso 0 (control, público tal cual) → submission 57240695. Score: PENDIENTE.
+  - Si v2 > v3, nuestro modelo suma; si empatan, revisar si fue `KAD_SKIPPED` (no se ve en el envío: probar con más tiempo o sin nice).
+- Paso 5: corrección al plan, en steven_v4 el 0.5 casi no existe (≤0.2 %); lo incierto son valores intermedios (Synovitis 47 % entre 0.3 y 0.7, Lateral OA 4 %). `train_raptor.py --conf_weight 0.25` pondera la BCE por `max(0.25, 2|y-0.5|)`; además `x.to(dev)` ya está dentro del reintento ante OOM. Corriendo `knee-coatnet-v3` (igual que v2 + `--conf_weight 0.25 --seed 43`, `-AtStartup`), 5.4 GB de VRAM, ~10 h, termina hacia la noche del 15. Al terminar: `stop` y matar Python huérfano; comparar curva con v2; si suma en gold, subir con `upload_weights.py` como versión nueva del dataset y agregarlo como segundo brazo propio.
+- Fase 1 (EDA) nunca se hizo como tal: no hay notebooks ni scripts de EDA en ningún equipo. Va en el notebook de "trayecto".
 - Bakery: `job.ps1 stop` dijo "Detenido" pero dejó vivos al proceso de Python y a sus workers del DataLoader (11.5 GB de VRAM); hubo que matarlos con `Stop-Process`. Arreglar en `29.Bakery`.
 - WSL 2 con Debian ya instalado en Pixilate (2026-10-14); `bakery` y `hardware` actualizadas en SkillShot y sincronizadas.
 - Inferencia: cada modelo necesita la geometría de su corpus (v1: 44 cortes del 15 al 85 %; v2: 64 del 6 al 94 %); el notebook debe llevarla por modelo.

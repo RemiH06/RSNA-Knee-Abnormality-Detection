@@ -389,6 +389,8 @@ def main():
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--micro_bs", type=int, default=0,
                     help="parte cada batch en micro-batches y acumula gradiente (mismo resultado, menos VRAM)")
+    ap.add_argument("--conf_weight", type=float, default=0,
+                    help="pondera la pérdida por confianza de la etiqueta: max(piso, 2|y-0.5|); 0 = sin ponderar")
     ap.add_argument("--vram_gb", type=float, default=0, help="tope de VRAM para este proceso (0 = sin tope)")
     ap.add_argument("--resume", action="store_true",
                     help="sigue desde runs/raptor_last_<tag>.pt si existe (apagones); si no existe, empieza de cero")
@@ -520,7 +522,14 @@ def main():
     steps = max(len(tl) * a.epochs, 1)
     sched = torch.optim.lr_scheduler.OneCycleLR(opt, max_lr=[a.bb_lr, a.head_lr],
                                                 total_steps=steps, pct_start=0.15)
-    lossf = nn.BCEWithLogitsLoss(pos_weight=pw)
+    _bce = nn.BCEWithLogitsLoss(pos_weight=pw, reduction="none")
+
+    def lossf(logits, y):
+        l = _bce(logits, y)
+        if not a.conf_weight:
+            return l.mean()
+        w = torch.clamp(2 * (y - 0.5).abs(), min=a.conf_weight)
+        return (l * w).sum() / w.sum()
 
     @torch.no_grad()
     def evaluate():
@@ -558,10 +567,10 @@ def main():
     for ep in range(start_ep, a.epochs):
         model.train(); tot = 0.0
         mb = a.micro_bs or a.bs
-        for x, y in tl:
-            x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
-
+        for xc, yc in tl:
             def step():
+                # la copia a la GPU va dentro del reintento: también puede quedarse sin memoria
+                x, y = xc.to(dev, non_blocking=True), yc.to(dev, non_blocking=True)
                 opt.zero_grad(); step_loss = 0.0
                 for xs, ys in zip(x.split(mb), y.split(mb)):
                     with torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
