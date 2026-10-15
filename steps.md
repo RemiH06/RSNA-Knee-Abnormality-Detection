@@ -112,6 +112,12 @@ Fase: inferencia y primer envío. Contexto de la tarea de clase en la memoria `r
 4. Combinar por rangos con los mejores públicos (`goodpjw2008/rsna-knee-coatnet-2-5d-convnext-mil-lb-0-954`, `heliosli` 0.956/0.957, ver "Qué hace la comunidad").
 5. En paralelo, en Pixilate: segundo modelo con pérdida ponderada por confianza de la etiqueta (`2·|p−0.5|`, en steven_v4 0.5 = "el reporte no lo menciona"), para Synovitis y Lateral OA. Usar `--resume --micro_bs 1 --vram_gb 7 -AtStartup`; meter `x.to(dev)` dentro del reintento ante OOM.
 6. Al final: dos notebooks (trayecto + versión definitiva) y actualizar el README con el score.
+
+**Hecho 2026-10-15 (mañana):** pasos 1 a 3.
+- Pesos en el dataset privado `hctorheredia/kad-knee-weights` (subido con `scripts/upload_weights.py` vía `run_with_token.ps1`, que ahora reenvía argumentos).
+- Notebook `kaggle/infer_v2/` → kernel privado `hctorheredia/kad-knee-infer-v2` (v1): el de Raptor con nuestros pesos, `kaggle kernels push -p kaggle/infer_v2`. Con los 3 estudios de ejemplo: 39 s, sin fallos, carga estricta de pesos OK.
+- Primer envío: submission 57232135 (`kaggle competitions submit -c rsna-knee-abnormality-detection -k hctorheredia/kad-knee-infer-v2 -v 1 -f submission.csv`). Score público: PENDIENTE.
+- Siguiente: pasos 4 y 5.
 - Bakery: `job.ps1 stop` dijo "Detenido" pero dejó vivos al proceso de Python y a sus workers del DataLoader (11.5 GB de VRAM); hubo que matarlos con `Stop-Process`. Arreglar en `29.Bakery`.
 - WSL 2 con Debian ya instalado en Pixilate (2026-10-14); `bakery` y `hardware` actualizadas en SkillShot y sincronizadas.
 - Inferencia: cada modelo necesita la geometría de su corpus (v1: 44 cortes del 15 al 85 %; v2: 64 del 6 al 94 %); el notebook debe llevarla por modelo.

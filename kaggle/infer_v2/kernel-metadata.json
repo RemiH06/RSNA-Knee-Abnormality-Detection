@@ -1,0 +1,16 @@
+{
+  "id": "hctorheredia/kad-knee-infer-v2",
+  "title": "KAD knee infer v2",
+  "code_file": "kad-knee-infer.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_tpu": false,
+  "enable_internet": false,
+  "dataset_sources": ["hctorheredia/kad-knee-weights"],
+  "kernel_sources": [],
+  "competition_sources": ["rsna-knee-abnormality-detection"],
+  "model_sources": [],
+  "machine_shape": "NvidiaTeslaT4"
+}
