@@ -1,0 +1,4 @@
+submission_id,fecha,descripcion,auc_gold,score_publico
+57232135,2026-10-15,"KAD v2: CoAtNet-384 2.5D + MIL, SWA de los epochs 8 a 10, modelo único",0.8916,0.919
+57240482,2026-10-15,"Combinación por rangos: público R7 0.957 + KAD v2 (peso 0.15)",,
+57240695,2026-10-15,"Control: público R7 0.957 sin KAD (peso 0)",,

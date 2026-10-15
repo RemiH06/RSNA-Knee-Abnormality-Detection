@@ -8,7 +8,7 @@
 ██╔═██╗ ██╔══██║██║  ██║
 ██║  ██╗██║  ██║██████╔╝
 ╚═╝  ╚═╝╚═╝  ╚═╝╚═════╝
-       by Hex (@RemiH06)          version 0.1.0
+       by Hex (@RemiH06)          version 0.2.0
 ```
 
 ![Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg?style=for-the-badge)
@@ -24,20 +24,31 @@ El reto principal no es el modelo sino las etiquetas: de 4,407 estudios de entre
 El modelo es 2.5D: tres cortes vecinos de la resonancia forman los tres canales de una imagen, un CoAtNet preentrenado (384 px) extrae rasgos de cada ventana, y una capa de atención con pesos propios por hallazgo decide qué cortes mirar para cada uno. Cada estudio se reduce a 64 cortes en 5 grupos (sagital y coronal con y sin supresión de grasa, y axial), ordenados por posición física y recortados a 140 mm de anatomía.
 
 ```diff
-- Proyecto en desarrollo: la competencia cierra el 2026-10-22. Los resultados de abajo son de validación interna, no del leaderboard.
+- La competencia cierra el 2026-10-22; el score privado (final) se publica después.
 - Los datos de la competencia no están en el repo (~265 GB comprimidos). Se bajan con los scripts, con una cuenta de Kaggle inscrita en la competencia.
 - Validar contra 58 estudios es una regla corta: diferencias menores a ~0.02 de AUC no son medibles.
 ```
 
-### Resultados de validación
+### Resultados
 
-AUC macro contra los 58 estudios con etiqueta real, por epoch del entrenamiento con el corpus de 64 cortes (v2):
+| | AUC macro |
+|---|---|
+| Leaderboard público de Kaggle, modelo propio solo (envío 57232135) | **0.919** |
+| Validación contra los 58 estudios gold (v2, promedio de pesos de los epochs 8 a 10) | 0.892 (IC 95 % bootstrap: 0.856 a 0.922) |
+| Etiquetas LLM usadas para entrenar, contra los mismos 58 estudios | 0.893 |
 
-| Epoch | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
-|---|---|---|---|---|---|---|---|
-| AUC | 0.795 | 0.812 | 0.853 | 0.848 | 0.865 | 0.881 | 0.887 |
+AUC macro contra los 58 estudios gold por epoch (v2, corpus de 64 cortes):
 
-Calidad de las etiquetas LLM usadas, contra los mismos 58 estudios: 0.893 de AUC macro (la más débil, sinovitis, 0.79).
+| Epoch | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| AUC | 0.695 | 0.795 | 0.812 | 0.853 | 0.848 | 0.865 | 0.881 | 0.887 | 0.890 | 0.888 | 0.886 | 0.884 |
+
+Después del epoch 9 la pérdida sigue bajando pero el AUC gold baja: el modelo empieza a memorizar el ruido de las etiquetas.
+
+### Notebooks
+
+- [`notebooks/01_trayecto.ipynb`](notebooks/01_trayecto.ipynb): el trayecto completo, fase por fase, con el análisis estadístico multivariado (vector de medias, matrices de covarianza y correlación, tablas conjuntas, pruebas de razón de verosimilitudes, valores propios, máxima verosimilitud y bootstrap). Para la materia Análisis Estadístico Multivariable (ITESO).
+- [`notebooks/02_version_definitiva.ipynb`](notebooks/02_version_definitiva.ipynb): el notebook de Kaggle que genera el envío final.
 
 ## Installation
 
@@ -85,14 +96,13 @@ El entrenamiento corre en Windows con una GPU NVIDIA (probado en una RTX 3060 de
 - Preprocesamiento sin descomprimir: `build_corpus.py` lee los DICOM directo del zip de 265 GB, ordena los cortes por geometría (`ImagePositionPatient`), normaliza intensidad por serie y recorta por milímetros, no por píxeles.
 - Modelo 2.5D con atención por hallazgo (multiple instance learning), con promedio de pesos de los mejores epochs.
 - Entrenamiento tolerante: reanudación por epoch, tope de VRAM y reintento ante falta de memoria, para convivir con otros usos de la GPU.
+- Combinación por rangos con los mejores modelos públicos de la competencia: como el AUC solo depende del orden, cada modelo se convierte a rangos antes de promediar.
 - Basado en trabajo público de la comunidad: el entrenador y el preprocesamiento adaptan los notebooks de [dreaddevelopment](https://www.kaggle.com/dreaddevelopment) (Apache 2.0); las etiquetas son de [stevenleehans](https://www.kaggle.com/datasets/stevenleehans/rsna-knee-llm-report-labels) (CC0).
 
 ## Future Features
 
-- Notebook de inferencia para Kaggle (sin internet, menos de 9 h para ~1,300 estudios) y primer envío.
-- Combinar por rangos nuestro modelo con los mejores modelos públicos de la competencia.
-- Segundo modelo para la combinación (otra semilla o arquitectura) y pérdida ponderada por la confianza de cada etiqueta.
-- Un notebook que documente el trayecto completo y otro con la versión definitiva.
+- Segundo modelo propio (v3, pérdida ponderada por la confianza de cada etiqueta) como brazo extra de la combinación.
+- Pesos por hallazgo en la combinación por rangos, según el AUC de cada modelo.
 
 ## Autoría
 

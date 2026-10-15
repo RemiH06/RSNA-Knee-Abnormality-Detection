@@ -5,4 +5,8 @@ venv/
 .venv/
 __pycache__/
 *.pyc
-.ipynb_checkpoints/runs/
+.ipynb_checkpoints/
+runs/
+# Derivados de datos de la competencia (cortes de MRI, etiquetas gold): no se redistribuyen
+results/*.npz
+results/gold/*.npz

@@ -53,11 +53,11 @@ Plan de datos: un script en Pixilate lee el zip remoto por rangos serie por seri
 ## Fases
 
 - [x] **Fase 0 — Acceso y entorno**: cuenta unida, token funcionando, CSVs chicos descargados (`sample_submission.csv`, `test.csv`, `test_series.csv`, `train.csv`, `train_series.csv`).
-- [ ] **Fase 1 — EDA**: prevalencia real de cada uno de los 12 hallazgos entre los 58 casos gold, calidad/longitud/idiomas de los reportes en las 4,407 filas, relación entre `Fluid_Sensitive`/`Fat_Suppression`/`Anatomical_Plane` y qué series conviene mirar por hallazgo, inspección visual de DICOMs de al menos algunos de los 58 casos gold.
-- [ ] **Fase 2 — Derivar pseudo-etiquetas del reporte**: como el texto no está en test, su único uso es generar labels ruidosas para los 4,349 estudios sin gold label (weak supervision), validando esas pseudo-etiquetas contra los 58 casos gold antes de confiar en ellas.
-- [ ] **Fase 3 — Baseline de imagen**: pipeline de preprocesamiento de series MRI (selección de serie relevante por plano/secuencia, normalización) y modelo 2.5D/3D entrenado con gold + pseudo-etiquetas, corriendo en Kaggle Notebook (GPU T4).
-- [ ] **Fase 4 — Validación**: cross-validation agrupado por estudio (y quizás por sitio, si se puede inferir) para evitar fuga de datos, optimizando macro ROC-AUC.
-- [ ] **Fase 5 — Ajustar a restricciones de code competition**: notebook de inferencia debe correr en ≤9 horas sin internet, usando solo el estudio de imagen (sin `Report`) como entrada, con pesos/modelos preentrenados adjuntos como Kaggle Dataset.
+- [x] **Fase 1 — EDA**: prevalencia real de cada uno de los 12 hallazgos entre los 58 casos gold, calidad/longitud/idiomas de los reportes en las 4,407 filas, relación entre `Fluid_Sensitive`/`Fat_Suppression`/`Anatomical_Plane` y qué series conviene mirar por hallazgo, inspección visual de DICOMs de al menos algunos de los 58 casos gold.
+- [x] **Fase 2 — Derivar pseudo-etiquetas del reporte**: como el texto no está en test, su único uso es generar labels ruidosas para los 4,349 estudios sin gold label (weak supervision), validando esas pseudo-etiquetas contra los 58 casos gold antes de confiar en ellas.
+- [x] **Fase 3 — Baseline de imagen**: pipeline de preprocesamiento de series MRI (selección de serie relevante por plano/secuencia, normalización) y modelo 2.5D/3D entrenado con gold + pseudo-etiquetas, corriendo en Kaggle Notebook (GPU T4).
+- [x] **Fase 4 — Validación**: cross-validation agrupado por estudio (y quizás por sitio, si se puede inferir) para evitar fuga de datos, optimizando macro ROC-AUC.
+- [x] **Fase 5 — Ajustar a restricciones de code competition**: notebook de inferencia debe correr en ≤9 horas sin internet, usando solo el estudio de imagen (sin `Report`) como entrada, con pesos/modelos preentrenados adjuntos como Kaggle Dataset.
 - [ ] **Fase 6 — Iteración y envío final**: ensamble, ajuste de umbrales/calibración, antes del 2026-10-22 23:59.
 
 ## Cambio de plan: entrenar en la PC con RTX 3060
@@ -128,3 +128,9 @@ Fase: inferencia y primer envío. Contexto de la tarea de clase en la memoria `r
 - Inferencia: cada modelo necesita la geometría de su corpus (v1: 44 cortes del 15 al 85 %; v2: 64 del 6 al 94 %); el notebook debe llevarla por modelo.
 - Siguiente (antes): (1) con el AUC gold de v1, armar el notebook de inferencia reusando el de Raptor (`dreaddevelopment/knee-mri-twelve-findings-from-a-single-model`) con nuestros pesos como dataset de Kaggle; (2) propuesta pendiente de aprobar: bajar `archive.zip` completo (264 GB, ~1.5 h) a Pixilate y regenerar el corpus a 64 cortes del 6 al 94 % con `build_study` del notebook de inferencia, que es la geometría de los pesos públicos de 0.924; (3) después, combinar por rangos con los mejores modelos públicos.
 - Pendiente de decidir: remoto de git (privado) para dejar de pasar código por `scp`.
+
+**Hecho 2026-10-15 (tarde): formalidades de entrega (materia: Análisis Estadístico Multivariable, Prof. Luis Alvarado).**
+- `notebooks/01_trayecto.ipynb` (ejecutado, corre en la laptop con `data/` + `results/`): Fases 0 a 6 con los temas de la materia. Hallazgos que no estaban en el plan: `Fluid_Sensitive` == `Fat_Suppression` en las 24,371 series; series por estudio no son Poisson (dispersión 0.35); 23/66 pares de hallazgos rechazan independencia por LRT (1 con Bonferroni); valores propios 3.08 y 1.93 (ejes degenerativo/traumático y lesión aguda); las etiquetas LLM conservan las correlaciones positivas (r = 0.74) pero aplanan las negativas; el modelo supera a su etiqueta en contusión (0.96 vs 0.86); IC95 bootstrap del AUC gold [0.856, 0.922] y las variantes de v2 no se distinguen entre sí.
+- Insumos en `results/`: `gold/*.json` (historiales), `submissions.csv` (actualizar a mano con cada envío), y `.npz` ignorados por git (derivados de datos de la competencia): `gold/raptor_gold_*.npz` se copian de `runs/` de Pixilate y `gold_slices.npz` sale de `scripts/extract_gold_slices.py`.
+- `.gitignore` arreglado: `runs/` no se estaba ignorando (estaba pegado a `.ipynb_checkpoints/`).
+- `notebooks/02_version_definitiva.ipynb`: el notebook de Kaggle ganador con portada y explicación generado con `python notebooks/build_definitiva.py kaggle/blend/kad-knee-blend.ipynb notebooks/02_version_definitiva.ipynb <peso> <score> <submission>` (portada + celdas de Kaggle sin cambios).
