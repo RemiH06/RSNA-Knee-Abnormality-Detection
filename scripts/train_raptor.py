@@ -1,5 +1,5 @@
 # Adaptado de https://www.kaggle.com/code/dreaddevelopment/knee-mri-training-the-twelve-finding-model (Apache 2.0).
-# Cambios: rutas por defecto fuera de Kaggle (KNEE_DATA/KNEE_OUT), --corpus, --resume y --labels acepta CSV. Lo demás, igual al original.
+# Cambios: rutas por defecto fuera de Kaggle (KNEE_DATA/KNEE_OUT), --corpus, --resume, --micro_bs/--vram_gb con reintento ante OOM y --labels acepta CSV. Lo demás, igual al original.
 #!/usr/bin/env python3
 """Knee MRI: training the twelve-finding model
 
@@ -338,6 +338,18 @@ class RaptorClassifier(nn.Module):
 
 
 # ------------------------------- train ---------------------------------------
+def _oom_retry(fn, tries=30):
+    """Reintenta fn() si la GPU se queda sin memoria (en Pixilate alguien puede abrir un juego)."""
+    for i in range(tries):
+        try:
+            return fn()
+        except (torch.OutOfMemoryError, torch.AcceleratorError) as e:
+            if "out of memory" not in str(e) or i == tries - 1:
+                raise
+            print(f"[oom] GPU sin memoria, reintento {i + 1}/{tries} en 60 s", flush=True)
+            torch.cuda.empty_cache(); time.sleep(60)
+
+
 def main():
     ap = argparse.ArgumentParser()
     # Defaults to ImageNet-pretrained weights, which is what every released arm was trained from.
@@ -372,6 +384,9 @@ def main():
                          "columns, values 0..1. Not provided with this notebook - see the header.")
     ap.add_argument("--smoke", action="store_true")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--micro_bs", type=int, default=0,
+                    help="parte cada batch en micro-batches y acumula gradiente (mismo resultado, menos VRAM)")
+    ap.add_argument("--vram_gb", type=float, default=0, help="tope de VRAM para este proceso (0 = sin tope)")
     ap.add_argument("--resume", action="store_true",
                     help="sigue desde runs/raptor_last_<tag>.pt si existe (apagones); si no existe, empieza de cero")
     # ---- CV fold hook ----
@@ -389,6 +404,9 @@ def main():
         os.environ["KNEE_CORPUS"] = os.path.abspath(a.corpus)
     random.seed(a.seed); np.random.seed(a.seed); torch.manual_seed(a.seed)
     dev = "cuda" if torch.cuda.is_available() else "cpu"
+    if dev == "cuda" and a.vram_gb > 0:
+        total = torch.cuda.get_device_properties(0).total_memory / 2**30
+        torch.cuda.set_per_process_memory_fraction(min(1.0, a.vram_gb / total))
     if a.smoke:
         a.epochs, a.bs, a.k, a.k_eval, a.limit, a.workers = 2, 4, 4, 6, 40, 0
     print(f"device {dev} | res {a.res} | k {a.k}/{a.k_eval} | bs {a.bs} | tag {a.tag} | "
@@ -505,8 +523,10 @@ def main():
     def evaluate():
         model.eval(); P = []; Y = []
         for x, y in vl:
-            with torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
-                o = torch.sigmoid(model(x.to(dev)).float())
+            def fwd():
+                with torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
+                    return torch.sigmoid(model(x.to(dev)).float())
+            o = _oom_retry(fwd)
             P.append(o.cpu().numpy()); Y.append(y.numpy())
         P = np.concatenate(P); Y = np.concatenate(Y)
         aucs = {}
@@ -529,15 +549,22 @@ def main():
         print(f"[resume] sigue en ep{start_ep} desde {os.path.basename(last_path)} (best {best:.4f})", flush=True)
     for ep in range(start_ep, a.epochs):
         model.train(); tot = 0.0
+        mb = a.micro_bs or a.bs
         for x, y in tl:
             x, y = x.to(dev, non_blocking=True), y.to(dev, non_blocking=True)
-            opt.zero_grad()
-            with torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
-                logits = model(x)
-                loss = lossf(logits.float(), y)
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
-            opt.step(); sched.step(); tot += loss.item()
+
+            def step():
+                opt.zero_grad(); step_loss = 0.0
+                for xs, ys in zip(x.split(mb), y.split(mb)):
+                    with torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
+                        # media del batch completo = suma de medias por micro-batch ponderadas por tamaño
+                        loss = lossf(model(xs).float(), ys) * (len(xs) / len(x))
+                    loss.backward(); step_loss += loss.item()
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 3.0)
+                opt.step()
+                return step_loss
+
+            tot += _oom_retry(step); sched.step()
         au, aucs, P, Y = evaluate()
         hist.append({"ep": ep, "loss": tot / len(tl), "gold_auc": au})
         if au > best:
