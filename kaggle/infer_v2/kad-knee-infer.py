@@ -289,6 +289,69 @@ def find_weight_file(fname):
     raise RuntimeError(f"{fname} not found under /kaggle/input")
 
 
+# ============================================================================
+# Inferencia en paralelo (KAD): un proceso por GPU, cada uno con 2 procesos que leen DICOM
+# mientras su GPU calcula. Mismas predicciones que el camino secuencial; en las 2 T4 de Kaggle,
+# 58 estudios bajan de 149 s a 56 s. Un estudio que falla vuelve como None.
+# ============================================================================
+_SH = {}
+
+
+def _shard_init(ser, tsdir):
+    _SH.update(ser=ser, tsdir=tsdir, reader=_make_reader())
+
+
+def _shard_build(job):
+    i, sid = job
+    try:
+        vol, mask = build_study(sid, _SH["ser"], _SH["tsdir"], _SH["reader"])
+        return i, vol, mask, None
+    except Exception as e:
+        return i, None, None, f"{type(e).__name__}: {e}"
+
+
+def _run_shard(gpu, jobs, ser, tsdir, arm, q):
+    import multiprocessing as mp
+    # respeta un CUDA_VISIBLE_DEVICES heredado (en el blend solo vemos la GPU 1)
+    vis = os.environ.get("CUDA_VISIBLE_DEVICES")
+    os.environ["CUDA_VISIBLE_DEVICES"] = vis.split(",")[gpu] if vis else str(gpu)
+    torch.set_num_threads(1)
+    try:
+        model, res = load_model(find_weight_file(arm["file"]), arm["arch"], arm["res"], "cuda")
+        with mp.get_context("fork").Pool(2, _shard_init, (ser, tsdir)) as pool:
+            for i, vol, mask, err in pool.imap(_shard_build, jobs):
+                p = None
+                if err is None:
+                    try:
+                        p = infer_probs(model, eval_windows(vol, mask, k=K_EVAL, res=res, norm=NORM), "cuda")
+                    except Exception as e:
+                        err = f"{type(e).__name__}: {e}"
+                q.put((i, p, err))
+    except Exception as e:
+        print(f"[gpu {gpu}] shard murió: {type(e).__name__}: {e}", flush=True)
+    q.put(("done", gpu, None))
+
+
+def run_parallel(test_ids, SER, tsdir, arm, ngpu, t0):
+    import multiprocessing as mp
+    ctx = mp.get_context("spawn"); q = ctx.Queue()
+    jobs = list(enumerate(test_ids))
+    procs = [ctx.Process(target=_run_shard, args=(g, jobs[g::ngpu], SER, tsdir, arm, q)) for g in range(ngpu)]
+    for p in procs: p.start()
+    got = {}; done = 0
+    while done < ngpu:
+        i, p, err = q.get()
+        if i == "done":
+            done += 1; continue
+        got[i] = p
+        if err:
+            print(f"  study {i} {test_ids[i][:16]} FALLBACK ({err})", flush=True)
+        if len(got) % 100 == 0:
+            print(f"  [parallel] {len(got)}/{len(test_ids)} | {time.time()-t0:.0f}s", flush=True)
+    for p in procs: p.join()
+    return got
+
+
 def main():
     import pandas as pd
     t0 = time.time()
@@ -320,16 +383,35 @@ def main():
     arm_probs = [np.full((N, len(LAB)), 0.5, np.float32) for _ in range(A)]
     failed = np.zeros(N, bool)
 
+    # Camino paralelo (un solo brazo). Lo que no regrese (proceso caído) lo termina el secuencial.
+    todo = list(range(N))
+    if dev == "cuda" and A == 1:
+        try:
+            got = run_parallel(test_ids, SER, tsdir, ARMS[0], max(1, ngpu), t0)
+            for i, p in got.items():
+                if p is None:
+                    failed[i] = True
+                else:
+                    arm_probs[0][i] = p
+            todo = [i for i in range(N) if i not in got]
+            print(f"[parallel] {len(got)}/{N} estudios | fallidos {int(failed.sum())} | pendientes {len(todo)} "
+                  f"| {time.time()-t0:.0f}s", flush=True)
+        except Exception as e:
+            print(f"[parallel] falló ({type(e).__name__}: {e}); sigue en secuencial", flush=True)
+
     # SEQUENTIAL ARMS (the OOM fix): only ONE model is resident at a time, so peak system RAM ==
     # one model == the single-arm champion's footprint (which graded fine at 0.879). Holding both
     # arms simultaneously OOM'd system RAM on the full hidden test. Each study is re-preprocessed
     # per arm (build_study is cheap vs inference) and every per-study buffer is freed. Same models,
     # same windowing, same rank-mean blend -> identical 0.8893 result, just serialized.
     for a, arm in enumerate(ARMS):
+        if not todo:
+            break
         wp = find_weight_file(arm["file"])
         model, res = load_model(wp, arm["arch"], arm["res"], dev)
         print(f"[arm {a}] loaded {arm['file']} | res {res} | {time.time()-t0:.0f}s", flush=True)
-        for i, sid in enumerate(test_ids):
+        for i in todo:
+            sid = test_ids[i]
             try:
                 vol, mask = build_study(sid, SER, tsdir, reader)
                 xw = eval_windows(vol, mask, k=K_EVAL, res=res, norm=NORM)
