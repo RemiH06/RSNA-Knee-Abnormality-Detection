@@ -1,0 +1,5 @@
+KAD (Knee Abnormality Detection)
+Copyright 2026 Hex (Lambda Heredia, @RemiH06)
+
+scripts/train_raptor.py y scripts/build_corpus.py adaptan código de
+dreaddevelopment (https://www.kaggle.com/dreaddevelopment), bajo Apache 2.0.
