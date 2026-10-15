@@ -338,8 +338,11 @@ class RaptorClassifier(nn.Module):
 
 
 # ------------------------------- train ---------------------------------------
-def _oom_retry(fn, tries=30):
-    """Reintenta fn() si la GPU se queda sin memoria (en Pixilate alguien puede abrir un juego)."""
+def _oom_retry(fn, tries=360):
+    """Reintenta fn() si la GPU se queda sin memoria (en Pixilate alguien puede abrir un juego).
+
+    Espera hasta ~6 h: una sesión de juego no debe matar el entrenamiento. empty_cache cede la VRAM al juego.
+    """
     for i in range(tries):
         try:
             return fn()
@@ -524,8 +527,13 @@ def main():
         model.eval(); P = []; Y = []
         for x, y in vl:
             def fwd():
+                # Backbone por tramos de ventanas: nunca más ventanas a la vez que un micro-batch de
+                # entrenamiento (con --vram_gb, 2 estudios x 24 ventanas no caben). La cabeza ve todas juntas,
+                # así que el resultado es el mismo que sin tramos.
+                xx = x.to(dev); step = max(1, (a.micro_bs or a.bs) * a.k // xx.shape[0])
                 with torch.autocast(dev, dtype=torch.bfloat16, enabled=dev == "cuda"):
-                    return torch.sigmoid(model(x.to(dev)).float())
+                    feats = torch.cat([model.encode(xx[:, i:i + step]) for i in range(0, xx.shape[1], step)], 1)
+                    return torch.sigmoid(model.head(feats).float())
             o = _oom_retry(fwd)
             P.append(o.cpu().numpy()); Y.append(y.numpy())
         P = np.concatenate(P); Y = np.concatenate(Y)
