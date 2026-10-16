@@ -1,0 +1,39 @@
+{
+ "n_studies": 200,
+ "total_seconds": 2334.5,
+ "RAPTOR_SECONDS": 381.6,
+ "RAPTOR224_SECONDS": 113.4,
+ "stage2_seconds": 1816.9,
+ "stage2_receipt": {
+  "status": "PASS",
+  "scored": 200,
+  "fallback_studies": 0,
+  "per_study_mean": {
+   "decode_s": 7.112,
+   "render_s": 4.171,
+   "gpu_s": 13.259,
+   "windows": 587.4
+  },
+  "gpus": [
+   "Tesla T4",
+   "Tesla T4"
+  ]
+ },
+ "auc_raptor_raw.csv": [
+  0.9229,
+  58
+ ],
+ "auc_raptor224_raw.csv": [
+  0.9149,
+  58
+ ],
+ "auc_ours_sub.csv": [
+  0.9312,
+  58
+ ],
+ "auc_submission.csv": [
+  0.9363,
+  58
+ ],
+ "extrapolated_hours_1300": 4.22
+}

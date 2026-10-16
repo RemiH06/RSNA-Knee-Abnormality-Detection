@@ -10,3 +10,4 @@ runs/
 # Derivados de datos de la competencia (cortes de MRI, etiquetas gold): no se redistribuyen
 results/*.npz
 results/gold/*.npz
+kaggle/timing/kad-timing-*/
