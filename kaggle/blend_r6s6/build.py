@@ -1,17 +1,23 @@
-"""Arma kaggle/blend_r6s6/: el fork R6 (kaggle/blend_r6) + S6 de nartaa (nartaa/rsna-knee-s6fall-solo) como etapa opcional.
+"""Agrega S6 de nartaa (nartaa/rsna-knee-s6fall-solo) como etapa opcional a un fork con R6 (kaggle/blend_r6 o el de goodpjw2008).
 
 S6 corre después de R6, con el tiempo que sobre del límite de 9 h. Su componente A (el mismo Raptor 0.949 de nuestra
 etapa 1) no se vuelve a correr: se lee de raptor_sub.csv. Si S6 falla o no cabe, la combinación queda igual a la de R6
 (S6_SKIPPED). Final = (1 - W_S6) x blend R6 + W_S6 x rank(S6), por hallazgo.
-Uso: python kaggle/blend_r6s6/build.py <rsna-knee-s6fall-solo.py> <W_S6>
+Uso: python kaggle/blend_r6s6/build.py <rsna-knee-s6fall-solo.py> <W_S6> [<ipynb base> <slug de salida>]
+     sin base: kaggle/blend_r6 -> kaggle/blend_r6s6 (kad-knee-blend-r6s6); con base: kaggle/<slug>/
+     (lee kernel-metadata.json junto al ipynb base para heredar los datasets)
 """
 import json, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 s6_path, w = Path(sys.argv[1]), float(sys.argv[2])
-nb = json.load(open(HERE.parent / "blend_r6" / "kad-knee-blend-r6.ipynb", encoding="utf-8"))
-meta = json.load(open(HERE.parent / "blend_r6" / "kernel-metadata.json", encoding="utf-8"))
+base = Path(sys.argv[3]) if len(sys.argv) > 3 else HERE.parent / "blend_r6" / "kad-knee-blend-r6.ipynb"
+slug = sys.argv[4] if len(sys.argv) > 4 else "kad-knee-blend-r6s6"
+OUT = HERE if slug == "kad-knee-blend-r6s6" else HERE.parent / slug
+OUT.mkdir(exist_ok=True)
+nb = json.load(open(base, encoding="utf-8"))
+meta = json.load(open(base.parent / "kernel-metadata.json", encoding="utf-8"))
 s6 = s6_path.read_text(encoding="utf-8")
 
 
@@ -73,11 +79,18 @@ if S6_OK:
 '''
 
 cells = nb["cells"]
-assert "".join(cells[8]["source"]).startswith("# Stage 3"), "estructura del notebook cambió"
-cells[8]["source"] = ("".join(cells[8]["source"]) + blend).splitlines(keepends=True)
-nb["cells"] = cells[:8] + [code("%%writefile /tmp/s6_run.py\n" + s6), code(stage)] + cells[8:]
-json.dump(nb, open(HERE / "kad-knee-blend-r6s6.ipynb", "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)
-meta.update(id="hctorheredia/kad-knee-blend-r6s6", title="KAD knee blend r6s6", code_file="kad-knee-blend-r6s6.ipynb")
-meta["dataset_sources"] = list(meta["dataset_sources"]) + ["nartaa/rsna-knee-s6fall-weights"]
-json.dump(meta, open(HERE / "kernel-metadata.json", "w", encoding="utf-8"), indent=2)
-print("escrito", HERE, "W_S6", w)
+for c in cells:
+    if c["cell_type"] == "code":
+        c["outputs"], c["execution_count"] = [], None
+st3 = [i for i, c in enumerate(cells) if c["cell_type"] == "code" and "".join(c["source"]).startswith("# Stage 3")]
+assert len(st3) == 1, "no hay una sola celda '# Stage 3'"
+i3 = st3[0]
+cells[i3]["source"] = ("".join(cells[i3]["source"]) + blend).splitlines(keepends=True)
+nb["cells"] = cells[:i3] + [code("%%writefile /tmp/s6_run.py\n" + s6), code(stage)] + cells[i3:]
+json.dump(nb, open(OUT / f"{slug}.ipynb", "w", encoding="utf-8", newline="\n"), ensure_ascii=False, indent=1)
+meta.update(id=f"hctorheredia/{slug}", title=slug.replace("-", " "), code_file=f"{slug}.ipynb", is_private=True)
+meta.pop("id_no", None); meta.pop("docker_image", None)
+if "nartaa/rsna-knee-s6fall-weights" not in meta["dataset_sources"]:
+    meta["dataset_sources"] = list(meta["dataset_sources"]) + ["nartaa/rsna-knee-s6fall-weights"]
+json.dump(meta, open(OUT / "kernel-metadata.json", "w", encoding="utf-8"), indent=2)
+print("escrito", OUT / f"{slug}.ipynb", "W_S6", w)

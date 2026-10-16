@@ -3,14 +3,20 @@
 Crea /tmp/fakecomp con test.csv, test_series.csv, sample_submission.csv y test_series/<estudio> como enlaces a
 train_series (los 58 gold + estudios al azar hasta N), y parcha los tres lugares donde el notebook encuentra la
 competencia. Al final mide cada etapa y el AUC gold de cada miembro y del blend.
-Uso: python kaggle/timing/build.py <ipynb del fork> <slug del kernel> <N estudios> [datasets extra...]
+Uso: python kaggle/timing/build.py <ipynb del fork> <slug del kernel> <N estudios | k/K> [datasets extra...]
+     k/K = parte k de K de los 4,407 estudios de train (para correr el maestro de la destilación por partes)
      (lee kernel-metadata.json junto al ipynb para heredar los datasets)
 """
 import json, sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-src, slug, n = Path(sys.argv[1]), sys.argv[2], int(sys.argv[3])
+src, slug, n = Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+if "/" in n:
+    _k, _K = map(int, n.split("/"))
+    SEL, DESC = f"[{_k}::{_K}]", f"parte {_k} de {_K} de todos los estudios de train"
+else:
+    SEL, DESC = f"[:{int(n)}]", f"{int(n)} estudios de train (los 58 gold primero)"
 nb = json.load(open(src, encoding="utf-8"))
 meta = json.load(open(src.parent / "kernel-metadata.json", encoding="utf-8"))
 
@@ -20,7 +26,7 @@ def code(text):
             "source": text.splitlines(keepends=True)}
 
 
-fake = f'''# [timing] test falso: {n} estudios de train (los 58 gold primero) con la misma estructura que test.
+fake = f'''# [timing] test falso: {DESC}, con la misma estructura que test.
 import os, numpy as np, pandas as pd
 from pathlib import Path
 _COMP = Path('/kaggle/input/competitions/rsna-knee-abnormality-detection')
@@ -32,7 +38,7 @@ _LAB = ["ACL", "MCL", "Medial Meniscus", "Lateral Meniscus", "Medial OA", "Later
 _tr = pd.read_csv(_COMP / 'train.csv', dtype={{'StudyInstanceUID': str}})
 _gold = _tr.dropna(subset=_LAB)['StudyInstanceUID'].tolist()
 _rest = _tr.loc[~_tr['StudyInstanceUID'].isin(_gold), 'StudyInstanceUID'].sample(frac=1, random_state=0).tolist()
-FAKE_IDS = (_gold + _rest)[:{n}]
+FAKE_IDS = (_gold + _rest){SEL}
 pd.DataFrame({{'StudyInstanceUID': FAKE_IDS}}).to_csv(_FAKE / 'test.csv', index=False)
 _ser = pd.read_csv(_COMP / 'train_series.csv', dtype={{'StudyInstanceUID': str, 'SeriesInstanceUID': str}})
 _ser[_ser['StudyInstanceUID'].isin(FAKE_IDS)].to_csv(_FAKE / 'test_series.csv', index=False)
@@ -65,7 +71,7 @@ _rc = Path('/kaggle/working/submission_receipt.json')
 if _rc.is_file():
     _r = json.loads(_rc.read_text()); rep['stage2_seconds'] = _r.get('seconds'); rep['stage2_receipt'] = {
         k: _r.get(k) for k in ('status', 'scored', 'fallback_studies', 'per_study_mean', 'gpus')}
-for f in ('raptor_raw.csv', 'raptor224_raw.csv', 'ours_sub.csv', 'kad_raw.csv', 's6_sub.csv', 'submission.csv'):
+for f in ('raptor_raw.csv', 'raptor224_raw.csv', 'ours_sub.csv', 'kad_raw.csv', 's6_sub.csv', '_own.csv', '_public_stack.csv', 'submission.csv'):
     p = Path('/kaggle/working') / f
     if p.is_file():
         rep['auc_' + f] = _auc(pd.read_csv(p, dtype={'StudyInstanceUID': str}))
@@ -80,6 +86,10 @@ PATCHES = [
      'cands = [os.environ.get("KAD_FAKE_ROOT", "/nonexistent"), "/kaggle/input/competitions/rsna-knee-abnormality-detection",'),
     ("DATA = find_mount(COMPETITION, 'test.csv')", "DATA = Path(os.environ['KAD_FAKE_ROOT'])  # [timing]"),
 ]
+OPTIONAL = [   # solo en algunos forks (lector 2.5D de goodpjw2008)
+    ('_o_find("knee.py"), _o_find("test_series.csv")',
+     '_o_find("knee.py"), (_o_os.environ.get("KAD_FAKE_ROOT") or _o_find("test_series.csv"))'),
+]
 hits = {p[0]: 0 for p in PATCHES}
 for c in nb["cells"]:
     if c["cell_type"] != "code":
@@ -88,6 +98,8 @@ for c in nb["cells"]:
     s = "".join(c["source"])
     for a, b in PATCHES:
         hits[a] += s.count(a)
+        s = s.replace(a, b)
+    for a, b in OPTIONAL:
         s = s.replace(a, b)
     c["source"] = s.splitlines(keepends=True)
 assert all(hits.values()), f"parches sin aplicar: {hits}"
