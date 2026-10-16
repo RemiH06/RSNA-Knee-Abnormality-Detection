@@ -178,3 +178,9 @@ Pendientes, en orden:
 3. **convnext_v4**: al terminar, `stop` (tiene `-AtStartup`), matar Python huérfano, comparar con v2 (0.8916) y probar el ensamble v2 + v4 en gold; si suma, segundo brazo en `kaggle/infer_v2` (envío propio y de eficiencia).
 4. Al cerrar trabajos con `-AtStartup` (`knee-queue`, `knee-convnext-v4`): `stop`.
 5. Al final: elegir los 2 envíos finales (mejor blend + nuestro modelo propio), notebooks de trayecto/definitivo, README con el score.
+
+**Avance 2026-10-16 (13:30).**
+- Arnés goodpjw + S6 (`kad-timing-gp958s6`, 200 estudios): **~7.5 h** para 1,300 (etapa 2 R6 2,743 s, Raptor 296 s, S6 y parte B ~770 s; la parte B corrió, no se saltó). AUC gold: Raptor 0.9229, R6 0.9366, S6 0.9314, parte B de goodpjw 0.9153, su pila pública 0.9389, con S6 **0.9390** (R6 + S6 daba 0.9402: empate dentro del ruido). Enviado `kad-knee-gp958s6` v1: submission 57281011. Score: PENDIENTE.
+- Maestro parte 0 (1,102 estudios, 2.5 h): AUC contra etiquetas LLM 0.940 en train vs 0.917 en gold (n=15) y 0.944 contra gold real. No memoriza (repetir sus etiquetas daría ~0.99): la cola sigue. Script del diagnóstico de una parte: `mem0.py` (scratch; `collect.py` hace lo mismo con las 4).
+- `knee-convnext-v4`: ep4 0.8732 (mejor), ep5 0.8722, ep6 0.8714; ~19 min por epoch. Arrancó mejor que v2 (ep4 0.873 vs 0.848) pero se estancó: en ep6 ya va abajo (0.871 vs 0.881).
+- `results/submissions.csv` puesto al día con todos los envíos.
