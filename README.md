@@ -49,6 +49,7 @@ Después del epoch 9 la pérdida sigue bajando pero el AUC gold baja: el modelo 
 
 - [`notebooks/01_trayecto.ipynb`](notebooks/01_trayecto.ipynb): el trayecto completo, fase por fase, con el análisis estadístico multivariado (vector de medias, matrices de covarianza y correlación, tablas conjuntas, pruebas de razón de verosimilitudes, valores propios, máxima verosimilitud y bootstrap). Para la materia Análisis Estadístico Multivariable (ITESO).
 - [`notebooks/02_version_definitiva.ipynb`](notebooks/02_version_definitiva.ipynb): el notebook de Kaggle que genera el envío final.
+- [`notebooks/03_interpretacion.ipynb`](notebooks/03_interpretacion.ipynb): dónde mira el modelo. La atención por hallazgo se trata como una distribución de probabilidad sobre los cortes (marginales por tipo de serie, entropía, Mann-Whitney entre positivos y negativos) y Grad-CAM localiza la región dentro del corte. Insumos: `scripts/attention_maps.py`.
 
 ## Installation
 
